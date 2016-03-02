@@ -1,0 +1,9 @@
+[package]
+name = "chacha"
+version = "0.1.0"
+authors = ["Peter Reid <peter.d.reid@gmail.com>"]
+
+[dependencies]
+
+[features]
+nightly = []
