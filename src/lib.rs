@@ -12,16 +12,17 @@ use std::cmp::min;
 #[derive(Copy, Clone)]
 struct Row(u32, u32, u32, u32);
 
-pub struct ChaChaState {
+pub struct ChaCha {
     input: [u32; 16],
     output: [u8; 64],
     offset: u8,
+    rounds: u8,
     large_block_counter: bool,
 }
 
-impl ChaChaState {
-    pub fn new(key: &[u8; 32], nonce: &[u8; 12]) -> ChaChaState {
-        ChaChaState {
+impl ChaCha {
+    pub fn new(key: &[u8; 32], nonce: &[u8; 12]) -> ChaCha {
+        ChaCha {
             input: [
                 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
                 LittleEndian::read_u32(&key[ 0.. 4]),
@@ -40,11 +41,12 @@ impl ChaChaState {
             output: [0; 64],
             offset: 255,
             large_block_counter: false,
+            rounds: 20,
         }
     }
 
-    pub fn new_with_small_nonce(key: &[u8; 32], nonce: &[u8; 8]) -> ChaChaState {
-        ChaChaState {
+    pub fn new_with_small_nonce(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
+        ChaCha {
             input: [
                 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
                 LittleEndian::read_u32(&key[ 0.. 4]),
@@ -63,7 +65,14 @@ impl ChaChaState {
             output: [0; 64],
             offset: 255,
             large_block_counter: true,
+            rounds: 20,
         }
+    }
+
+    pub fn new_chacha12(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
+        let mut st = ChaCha::new_with_small_nonce(key, nonce);
+        st.rounds = 12;
+        st
     }
 }
 
@@ -181,7 +190,7 @@ pub fn permute_and_add(rounds: u8, xs: &mut [u32; 16]) {
 }
 
 
-impl ChaChaState {
+impl ChaCha {
     fn increment_counter(&mut self) -> Result<(), Error> {
         if self.input[12] != 0 {
             // This is the common case, where we just increment the counter.
@@ -209,7 +218,7 @@ impl ChaChaState {
     }
 }
 
-impl KeyStream for ChaChaState {
+impl KeyStream for ChaCha {
     fn xor_read(&mut self, dest: &mut [u8]) -> Result<(), Error> {
         let dest = if self.offset < 64 {
             let from_existing = min(dest.len(), 64 - self.offset as usize);
@@ -224,10 +233,8 @@ impl KeyStream for ChaChaState {
 
 
         for dest_chunk in dest.chunks_mut(64) {
-            println!("permuting with {} {}", self.input[12], self.input[13]);
-            permute(20, &mut self.input, true, Some(&mut self.output));
+            permute(self.rounds, &mut self.input, true, Some(&mut self.output));
             try!(self.increment_counter());
-            println!("incremented");
             if dest_chunk.len() == 64 {
                 for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
                     *dest_byte = *dest_byte ^ output_byte;
@@ -244,7 +251,7 @@ impl KeyStream for ChaChaState {
     }
 }
 
-impl SeekableKeyStream for ChaChaState {
+impl SeekableKeyStream for ChaCha {
     fn seek_to(&mut self, byte_offset: u64) -> Result<(), Error> {
         // With one block counter word, we can go past the end of the stream with a u64.
         if self.large_block_counter {
@@ -262,7 +269,7 @@ impl SeekableKeyStream for ChaChaState {
         }
 
         self.offset = (byte_offset & 0x3f) as u8;
-        permute(20, &mut self.input, true, Some(&mut self.output));
+        permute(self.rounds, &mut self.input, true, Some(&mut self.output));
 
         let (incremented_low, overflow) = self.input[12].overflowing_add(1);
         self.input[12] = incremented_low;
@@ -314,7 +321,7 @@ fn rfc_7539_permute_and_add_20() {
 
 #[test]
 fn rfc_7539_case_1() {
-    let mut st = ChaChaState::new(
+    let mut st = ChaCha::new(
         &[
             0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
             0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
@@ -338,7 +345,7 @@ fn rfc_7539_case_1() {
 
 #[test]
 fn rfc_7539_case_2() {
-    let mut st = ChaChaState::new(
+    let mut st = ChaCha::new(
         &[
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -371,7 +378,7 @@ fn rfc_7539_case_2() {
 
 #[test]
 fn rfc_7539_case_2_chunked() {
-    let mut st = ChaChaState::new(
+    let mut st = ChaCha::new(
         &[
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -408,7 +415,7 @@ fn rfc_7539_case_2_chunked() {
 
 #[test]
 fn seek_off_end() {
-    let mut st = ChaChaState::new(&[0xff; 32], &[0; 12]);
+    let mut st = ChaCha::new(&[0xff; 32], &[0; 12]);
 
     assert_eq!(st.seek_to(0x40_0000_0000), Err(Error::EndReached));
     assert_eq!(st.xor_read(&mut [0u8; 1]), Err(Error::EndReached));
@@ -419,7 +426,7 @@ fn seek_off_end() {
 
 #[test]
 fn read_last_bytes() {
-    let mut st = ChaChaState::new(&[0xff; 32], &[0; 12]);
+    let mut st = ChaCha::new(&[0xff; 32], &[0; 12]);
 
     st.seek_to(0x40_0000_0000 - 10).expect("should be able to seek to near the end");
     st.xor_read(&mut [0u8; 10]).expect("should be able to read last 10 bytes");
@@ -432,7 +439,7 @@ fn read_last_bytes() {
 
 #[test]
 fn seek_consistency() {
-    let mut st = ChaChaState::new(&[0x50; 32], &[0x44; 12]);
+    let mut st = ChaCha::new(&[0x50; 32], &[0x44; 12]);
 
     let mut continuous = [0u8; 1000];
     st.xor_read(&mut continuous).unwrap();
