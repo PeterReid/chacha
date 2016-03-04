@@ -74,6 +74,40 @@ impl ChaCha {
         st.rounds = 12;
         st
     }
+
+    pub fn new_xchacha20(key: &[u8; 32], nonce: &[u8; 24]) -> ChaCha {
+        let mut st = [
+            0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+            LittleEndian::read_u32(&key[ 0.. 4]),
+            LittleEndian::read_u32(&key[ 4.. 8]),
+            LittleEndian::read_u32(&key[ 8..12]),
+            LittleEndian::read_u32(&key[12..16]),
+            LittleEndian::read_u32(&key[16..20]),
+            LittleEndian::read_u32(&key[20..24]),
+            LittleEndian::read_u32(&key[24..28]),
+            LittleEndian::read_u32(&key[28..32]),
+            LittleEndian::read_u32(&nonce[ 0.. 4]),
+            LittleEndian::read_u32(&nonce[ 4.. 8]),
+            LittleEndian::read_u32(&nonce[ 8..12]),
+            LittleEndian::read_u32(&nonce[12..16]),
+        ];
+        permute(20, &mut st, false, None);
+
+        ChaCha {
+            input: [
+                0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+                st[ 0], st[ 1], st[ 2], st[ 3],
+                st[12], st[13], st[14], st[15],
+                0, 0,
+                LittleEndian::read_u32(&nonce[16..20]),
+                LittleEndian::read_u32(&nonce[20..24]),
+            ],
+            output: [0; 64],
+            offset: 255,
+            large_block_counter: true,
+            rounds: 20,
+        }
+    }
 }
 
 impl Row {
