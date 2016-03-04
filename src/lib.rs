@@ -21,7 +21,7 @@ pub struct ChaCha {
 }
 
 impl ChaCha {
-    pub fn new(key: &[u8; 32], nonce: &[u8; 12]) -> ChaCha {
+    pub fn new_ietf(key: &[u8; 32], nonce: &[u8; 12]) -> ChaCha {
         ChaCha {
             input: [
                 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
@@ -45,7 +45,7 @@ impl ChaCha {
         }
     }
 
-    pub fn new_with_small_nonce(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
+    pub fn new_chacha20(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
         ChaCha {
             input: [
                 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
@@ -70,7 +70,7 @@ impl ChaCha {
     }
 
     pub fn new_chacha12(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
-        let mut st = ChaCha::new_with_small_nonce(key, nonce);
+        let mut st = ChaCha::new_chacha20(key, nonce);
         st.rounds = 12;
         st
     }
@@ -321,7 +321,7 @@ fn rfc_7539_permute_and_add_20() {
 
 #[test]
 fn rfc_7539_case_1() {
-    let mut st = ChaCha::new(
+    let mut st = ChaCha::new_ietf(
         &[
             0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
             0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
@@ -345,7 +345,7 @@ fn rfc_7539_case_1() {
 
 #[test]
 fn rfc_7539_case_2() {
-    let mut st = ChaCha::new(
+    let mut st = ChaCha::new_ietf(
         &[
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -378,7 +378,7 @@ fn rfc_7539_case_2() {
 
 #[test]
 fn rfc_7539_case_2_chunked() {
-    let mut st = ChaCha::new(
+    let mut st = ChaCha::new_ietf(
         &[
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -415,7 +415,7 @@ fn rfc_7539_case_2_chunked() {
 
 #[test]
 fn seek_off_end() {
-    let mut st = ChaCha::new(&[0xff; 32], &[0; 12]);
+    let mut st = ChaCha::new_ietf(&[0xff; 32], &[0; 12]);
 
     assert_eq!(st.seek_to(0x40_0000_0000), Err(Error::EndReached));
     assert_eq!(st.xor_read(&mut [0u8; 1]), Err(Error::EndReached));
@@ -426,7 +426,7 @@ fn seek_off_end() {
 
 #[test]
 fn read_last_bytes() {
-    let mut st = ChaCha::new(&[0xff; 32], &[0; 12]);
+    let mut st = ChaCha::new_ietf(&[0xff; 32], &[0; 12]);
 
     st.seek_to(0x40_0000_0000 - 10).expect("should be able to seek to near the end");
     st.xor_read(&mut [0u8; 10]).expect("should be able to read last 10 bytes");
@@ -439,7 +439,7 @@ fn read_last_bytes() {
 
 #[test]
 fn seek_consistency() {
-    let mut st = ChaCha::new(&[0x50; 32], &[0x44; 12]);
+    let mut st = ChaCha::new_ietf(&[0x50; 32], &[0x44; 12]);
 
     let mut continuous = [0u8; 1000];
     st.xor_read(&mut continuous).unwrap();
