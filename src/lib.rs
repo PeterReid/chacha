@@ -8,10 +8,6 @@ pub use keystream::{KeyStream, SeekableKeyStream};
 pub use keystream::Error;
 use std::cmp::min;
 
-#[cfg_attr(feature="nightly", repr(simd))]
-#[derive(Copy, Clone)]
-struct Row(u32, u32, u32, u32);
-
 pub struct ChaCha {
     input: [u32; 16],
     output: [u8; 64],
@@ -109,6 +105,10 @@ impl ChaCha {
         }
     }
 }
+
+#[cfg_attr(feature="nightly", repr(simd))]
+#[derive(Copy, Clone)]
+struct Row(u32, u32, u32, u32);
 
 impl Row {
     fn add(self, x: Row) -> Row {
