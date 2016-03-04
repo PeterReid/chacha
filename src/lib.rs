@@ -1,8 +1,74 @@
 #![cfg_attr(feature="nightly", feature(repr_simd))]
 
+extern crate byteorder;
+extern crate keystream;
+
+use byteorder::{ByteOrder, LittleEndian};
+pub use keystream::KeyStream;
+pub use keystream::Error;
+use std::cmp::min;
+
 #[cfg_attr(feature="nightly", repr(simd))]
 #[derive(Copy, Clone)]
 struct Row(u32, u32, u32, u32);
+
+pub struct ChaChaState {
+    input: [u32; 16],
+    output: [u8; 64],
+    offset: u8,
+    block_counter_bytes: u8,
+    end_of_stream: bool,
+}
+
+impl ChaChaState {
+    pub fn new(key: &[u8; 32], nonce: &[u8; 12]) -> ChaChaState {
+        ChaChaState {
+            input: [
+                0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+                LittleEndian::read_u32(&key[ 0.. 4]),
+                LittleEndian::read_u32(&key[ 4.. 8]),
+                LittleEndian::read_u32(&key[ 8..12]),
+                LittleEndian::read_u32(&key[12..16]),
+                LittleEndian::read_u32(&key[16..20]),
+                LittleEndian::read_u32(&key[20..24]),
+                LittleEndian::read_u32(&key[24..28]),
+                LittleEndian::read_u32(&key[28..32]),
+                0, // block counter
+                LittleEndian::read_u32(&nonce[ 0.. 4]),
+                LittleEndian::read_u32(&nonce[ 4.. 8]),
+                LittleEndian::read_u32(&nonce[ 8..12]),
+            ],
+            output: [0; 64],
+            offset: 255,
+            block_counter_bytes: 1,
+            end_of_stream: false,
+        }
+    }
+
+    pub fn new_with_small_nonce(key: &[u8; 32], nonce: &[u8; 8]) -> ChaChaState {
+        ChaChaState {
+            input: [
+                0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+                LittleEndian::read_u32(&key[ 0.. 4]),
+                LittleEndian::read_u32(&key[ 4.. 8]),
+                LittleEndian::read_u32(&key[ 8..12]),
+                LittleEndian::read_u32(&key[12..16]),
+                LittleEndian::read_u32(&key[16..20]),
+                LittleEndian::read_u32(&key[20..24]),
+                LittleEndian::read_u32(&key[24..28]),
+                LittleEndian::read_u32(&key[28..32]),
+                0, // block counter
+                0,
+                LittleEndian::read_u32(&nonce[ 0.. 4]),
+                LittleEndian::read_u32(&nonce[ 4.. 8]),
+            ],
+            output: [0; 64],
+            offset: 255,
+            block_counter_bytes: 2,
+            end_of_stream: false,
+        }
+    }
+}
 
 impl Row {
     fn add(self, x: Row) -> Row {
@@ -40,7 +106,7 @@ impl Row {
 // Inlining this causes the loop to unroll, which makes the disassembly hard
 // to read.
 #[inline(always)]
-fn permute(mut rounds: u8, xs: &mut [u32; 16], do_add: bool) {
+fn permute(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<&mut [u8; 64]>) {
     let mut a = Row(xs[ 0], xs[ 1], xs[ 2], xs[ 3]);
     let mut b = Row(xs[ 4], xs[ 5], xs[ 6], xs[ 7]);
     let mut c = Row(xs[ 8], xs[ 9], xs[10], xs[11]);
@@ -75,7 +141,6 @@ fn permute(mut rounds: u8, xs: &mut [u32; 16], do_add: bool) {
             }
         }
     }
-
     if do_add {
         a = a.add(Row(xs[ 0], xs[ 1], xs[ 2], xs[ 3]));
         b = b.add(Row(xs[ 4], xs[ 5], xs[ 6], xs[ 7]));
@@ -83,20 +148,100 @@ fn permute(mut rounds: u8, xs: &mut [u32; 16], do_add: bool) {
         d = d.add(Row(xs[12], xs[13], xs[14], xs[15]));
     }
 
-    xs[ 0] = a.0; xs[ 1] = a.1; xs[ 2] = a.2; xs[ 3] = a.3;
-    xs[ 4] = b.0; xs[ 5] = b.1; xs[ 6] = b.2; xs[ 7] = b.3;
-    xs[ 8] = c.0; xs[ 9] = c.1; xs[10] = c.2; xs[11] = c.3;
-    xs[12] = d.0; xs[13] = d.1; xs[14] = d.2; xs[15] = d.3;
+    if let Some(bs) = bs {
+        LittleEndian::write_u32(&mut bs[ 0.. 4], a.0);
+        LittleEndian::write_u32(&mut bs[ 4.. 8], a.1);
+        LittleEndian::write_u32(&mut bs[ 8..12], a.2);
+        LittleEndian::write_u32(&mut bs[12..16], a.3);
+        LittleEndian::write_u32(&mut bs[16..20], b.0);
+        LittleEndian::write_u32(&mut bs[20..24], b.1);
+        LittleEndian::write_u32(&mut bs[24..28], b.2);
+        LittleEndian::write_u32(&mut bs[28..32], b.3);
+        LittleEndian::write_u32(&mut bs[32..36], c.0);
+        LittleEndian::write_u32(&mut bs[36..40], c.1);
+        LittleEndian::write_u32(&mut bs[40..44], c.2);
+        LittleEndian::write_u32(&mut bs[44..48], c.3);
+        LittleEndian::write_u32(&mut bs[48..52], d.0);
+        LittleEndian::write_u32(&mut bs[52..56], d.1);
+        LittleEndian::write_u32(&mut bs[56..60], d.2);
+        LittleEndian::write_u32(&mut bs[60..64], d.3);
+    } else {
+        xs[ 0] = a.0; xs[ 1] = a.1; xs[ 2] = a.2; xs[ 3] = a.3;
+        xs[ 4] = b.0; xs[ 5] = b.1; xs[ 6] = b.2; xs[ 7] = b.3;
+        xs[ 8] = c.0; xs[ 9] = c.1; xs[10] = c.2; xs[11] = c.3;
+        xs[12] = d.0; xs[13] = d.1; xs[14] = d.2; xs[15] = d.3;
+    }
 }
 
 #[inline(never)]
 pub fn permute_only(rounds: u8, xs: &mut [u32; 16]) {
-    permute(rounds, xs, false)
+    permute(rounds, xs, false, None)
 }
 
 #[inline(never)]
 pub fn permute_and_add(rounds: u8, xs: &mut [u32; 16]) {
-    permute(rounds, xs, true)
+    permute(rounds, xs, true, None)
+}
+
+
+impl ChaChaState {
+    fn increment_counter(&mut self) -> Result<(), Error> {
+        if self.input[12] != 0 {
+            // This is the common case, where we just increment the counter.
+
+            let (incremented_low, overflow) = self.input[12].overflowing_add(1);
+
+            self.input[12] = incremented_low;
+            // Regardless of the number of block bytes we use, we increase the high counter
+            // block. That is OK, since we will set the poison flag next time around
+            self.input[13] = self.input[13].wrapping_add(if overflow { 1 } else { 0 });
+        } else {
+            // The low block counter overflowed OR we are just starting.
+            // We detect the "just starting" case by setting `offset` to 255.
+            // (During other parts of operation, `offset` does not exceed 64.
+            if self.offset == 255 {
+                self.input[12] = 1;
+                self.offset = 64;
+            } else if self.input[13]==0 || self.block_counter_bytes==1 {
+                // Our counter wrapped around!
+                self.end_of_stream = true;
+                return Err(Error::EndReached);
+            }
+        }
+
+        Ok( () )
+    }
+
+    pub fn xor_read(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+        let dest = if self.offset < 64 {
+            let from_existing = min(dest.len(), 64 - self.offset as usize);
+            for (dest_byte, output_byte) in dest.iter_mut().zip(self.output[self.offset as usize..].iter()) {
+                *dest_byte = *dest_byte ^ *output_byte;
+            }
+            self.offset += from_existing as u8;
+            &mut dest[from_existing..]
+        } else {
+            dest
+        };
+
+
+        for dest_chunk in dest.chunks_mut(64) {
+            permute(20, &mut self.input, true, Some(&mut self.output));
+            try!(self.increment_counter());
+            if dest_chunk.len() == 64 {
+                for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
+                    *dest_byte = *dest_byte ^ output_byte;
+                }
+            } else {
+                for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
+                    *dest_byte = *dest_byte ^ output_byte;
+                }
+                self.offset = dest_chunk.len() as u8;
+            }
+        }
+
+        Ok( () )
+    }
 }
 
 #[test]
@@ -135,4 +280,98 @@ fn rfc_7539_permute_and_add_20() {
        0x466482d2, 0x09aa9f07, 0x05d7c214, 0xa2028bd9,
        0xd19c12b5, 0xb94e16de, 0xe883d0cb, 0x4e3c50a2,
     ]);
+}
+
+#[test]
+fn rfc_7539_case_1() {
+    let mut st = ChaChaState::new(
+        &[
+            0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+            0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
+            0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
+            0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f
+        ], &[
+            0x00,0x00,0x00,0x09,0x00,0x00,0x00,0x4a,
+            0x00,0x00,0x00,0x00
+        ]
+    );
+
+    let mut buf = [0u8; 128];
+    st.xor_read(&mut buf).unwrap();
+    assert_eq!(buf[64..].to_vec(), [
+        0x10, 0xf1, 0xe7, 0xe4, 0xd1, 0x3b, 0x59, 0x15, 0x50, 0x0f, 0xdd, 0x1f, 0xa3, 0x20, 0x71, 0xc4,
+        0xc7, 0xd1, 0xf4, 0xc7, 0x33, 0xc0, 0x68, 0x03, 0x04, 0x22, 0xaa, 0x9a, 0xc3, 0xd4, 0x6c, 0x4e,
+        0xd2, 0x82, 0x64, 0x46, 0x07, 0x9f, 0xaa, 0x09, 0x14, 0xc2, 0xd7, 0x05, 0xd9, 0x8b, 0x02, 0xa2,
+        0xb5, 0x12, 0x9c, 0xd1, 0xde, 0x16, 0x4e, 0xb9, 0xcb, 0xd0, 0x83, 0xe8, 0xa2, 0x50, 0x3c, 0x4e,
+    ].to_vec());
+}
+
+#[test]
+fn rfc_7539_case_2() {
+    let mut st = ChaChaState::new(
+        &[
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+        ], &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a,
+            0x00, 0x00, 0x00, 0x00
+        ]
+    );
+
+    let plaintext = b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+    let mut buf = [0u8; 178];
+    for (dest, src) in buf[64..].iter_mut().zip(plaintext.iter()) {
+        *dest = *src;
+    }
+    st.xor_read(&mut buf[..]).unwrap();
+
+    assert_eq!(buf[64..].to_vec(), [
+        0x6e, 0x2e, 0x35, 0x9a, 0x25, 0x68, 0xf9, 0x80, 0x41, 0xba, 0x07, 0x28, 0xdd, 0x0d, 0x69, 0x81,
+        0xe9, 0x7e, 0x7a, 0xec, 0x1d, 0x43, 0x60, 0xc2, 0x0a, 0x27, 0xaf, 0xcc, 0xfd, 0x9f, 0xae, 0x0b,
+        0xf9, 0x1b, 0x65, 0xc5, 0x52, 0x47, 0x33, 0xab, 0x8f, 0x59, 0x3d, 0xab, 0xcd, 0x62, 0xb3, 0x57,
+        0x16, 0x39, 0xd6, 0x24, 0xe6, 0x51, 0x52, 0xab, 0x8f, 0x53, 0x0c, 0x35, 0x9f, 0x08, 0x61, 0xd8,
+        0x07, 0xca, 0x0d, 0xbf, 0x50, 0x0d, 0x6a, 0x61, 0x56, 0xa3, 0x8e, 0x08, 0x8a, 0x22, 0xb6, 0x5e,
+        0x52, 0xbc, 0x51, 0x4d, 0x16, 0xcc, 0xf8, 0x06, 0x81, 0x8c, 0xe9, 0x1a, 0xb7, 0x79, 0x37, 0x36,
+        0x5a, 0xf9, 0x0b, 0xbf, 0x74, 0xa3, 0x5b, 0xe6, 0xb4, 0x0b, 0x8e, 0xed, 0xf2, 0x78, 0x5e, 0x42,
+        0x87, 0x4d,
+    ].to_vec());
+}
+
+#[test]
+fn rfc_7539_case_2_chunked() {
+    let mut st = ChaChaState::new(
+        &[
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+        ], &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a,
+            0x00, 0x00, 0x00, 0x00
+        ]
+    );
+
+    let plaintext = b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+    let mut buf = [0u8; 178];
+    for (dest, src) in buf[64..].iter_mut().zip(plaintext.iter()) {
+        *dest = *src;
+    }
+    st.xor_read(&mut buf[..40]).unwrap();
+    st.xor_read(&mut buf[40..78]).unwrap();
+    st.xor_read(&mut buf[78..79]).unwrap();
+    st.xor_read(&mut buf[79..128]).unwrap();
+    st.xor_read(&mut buf[128..]).unwrap();
+
+    assert_eq!(buf[64..].to_vec(), [
+        0x6e, 0x2e, 0x35, 0x9a, 0x25, 0x68, 0xf9, 0x80, 0x41, 0xba, 0x07, 0x28, 0xdd, 0x0d, 0x69, 0x81,
+        0xe9, 0x7e, 0x7a, 0xec, 0x1d, 0x43, 0x60, 0xc2, 0x0a, 0x27, 0xaf, 0xcc, 0xfd, 0x9f, 0xae, 0x0b,
+        0xf9, 0x1b, 0x65, 0xc5, 0x52, 0x47, 0x33, 0xab, 0x8f, 0x59, 0x3d, 0xab, 0xcd, 0x62, 0xb3, 0x57,
+        0x16, 0x39, 0xd6, 0x24, 0xe6, 0x51, 0x52, 0xab, 0x8f, 0x53, 0x0c, 0x35, 0x9f, 0x08, 0x61, 0xd8,
+        0x07, 0xca, 0x0d, 0xbf, 0x50, 0x0d, 0x6a, 0x61, 0x56, 0xa3, 0x8e, 0x08, 0x8a, 0x22, 0xb6, 0x5e,
+        0x52, 0xbc, 0x51, 0x4d, 0x16, 0xcc, 0xf8, 0x06, 0x81, 0x8c, 0xe9, 0x1a, 0xb7, 0x79, 0x37, 0x36,
+        0x5a, 0xf9, 0x0b, 0xbf, 0x74, 0xa3, 0x5b, 0xe6, 0xb4, 0x0b, 0x8e, 0xed, 0xf2, 0x78, 0x5e, 0x42,
+        0x87, 0x4d,
+    ].to_vec());
 }

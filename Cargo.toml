@@ -3,7 +3,11 @@ name = "chacha"
 version = "0.1.0"
 authors = ["Peter Reid <peter.d.reid@gmail.com>"]
 
+[dependencies.keystream]
+path = "../keystream"
+
 [dependencies]
+byteorder = "0.4.*"
 
 [features]
 nightly = []
