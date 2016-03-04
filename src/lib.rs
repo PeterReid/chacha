@@ -4,7 +4,7 @@ extern crate byteorder;
 extern crate keystream;
 
 use byteorder::{ByteOrder, LittleEndian};
-pub use keystream::KeyStream;
+pub use keystream::{KeyStream, SeekableKeyStream};
 pub use keystream::Error;
 use std::cmp::min;
 
@@ -16,8 +16,7 @@ pub struct ChaChaState {
     input: [u32; 16],
     output: [u8; 64],
     offset: u8,
-    block_counter_bytes: u8,
-    end_of_stream: bool,
+    large_block_counter: bool,
 }
 
 impl ChaChaState {
@@ -40,8 +39,7 @@ impl ChaChaState {
             ],
             output: [0; 64],
             offset: 255,
-            block_counter_bytes: 1,
-            end_of_stream: false,
+            large_block_counter: false,
         }
     }
 
@@ -64,8 +62,7 @@ impl ChaChaState {
             ],
             output: [0; 64],
             offset: 255,
-            block_counter_bytes: 2,
-            end_of_stream: false,
+            large_block_counter: true,
         }
     }
 }
@@ -192,9 +189,9 @@ impl ChaChaState {
             let (incremented_low, overflow) = self.input[12].overflowing_add(1);
 
             self.input[12] = incremented_low;
-            // Regardless of the number of block bytes we use, we increase the high counter
-            // block. That is OK, since we will set the poison flag next time around
-            self.input[13] = self.input[13].wrapping_add(if overflow { 1 } else { 0 });
+            self.input[13] = self.input[13].wrapping_add(if overflow {
+                if self.large_block_counter { 1 } else { 0 }
+            } else { 0 });
         } else {
             // The low block counter overflowed OR we are just starting.
             // We detect the "just starting" case by setting `offset` to 255.
@@ -202,17 +199,18 @@ impl ChaChaState {
             if self.offset == 255 {
                 self.input[12] = 1;
                 self.offset = 64;
-            } else if self.input[13]==0 || self.block_counter_bytes==1 {
+            } else if self.input[13]==0 || !self.large_block_counter {
                 // Our counter wrapped around!
-                self.end_of_stream = true;
                 return Err(Error::EndReached);
             }
         }
 
         Ok( () )
     }
+}
 
-    pub fn xor_read(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+impl KeyStream for ChaChaState {
+    fn xor_read(&mut self, dest: &mut [u8]) -> Result<(), Error> {
         let dest = if self.offset < 64 {
             let from_existing = min(dest.len(), 64 - self.offset as usize);
             for (dest_byte, output_byte) in dest.iter_mut().zip(self.output[self.offset as usize..].iter()) {
@@ -226,8 +224,10 @@ impl ChaChaState {
 
 
         for dest_chunk in dest.chunks_mut(64) {
+            println!("permuting with {} {}", self.input[12], self.input[13]);
             permute(20, &mut self.input, true, Some(&mut self.output));
             try!(self.increment_counter());
+            println!("incremented");
             if dest_chunk.len() == 64 {
                 for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
                     *dest_byte = *dest_byte ^ output_byte;
@@ -239,6 +239,36 @@ impl ChaChaState {
                 self.offset = dest_chunk.len() as u8;
             }
         }
+
+        Ok( () )
+    }
+}
+
+impl SeekableKeyStream for ChaChaState {
+    fn seek_to(&mut self, byte_offset: u64) -> Result<(), Error> {
+        // With one block counter word, we can go past the end of the stream with a u64.
+        if self.large_block_counter {
+            self.input[12] = (byte_offset >> 6) as u32;
+            self.input[13] = (byte_offset >> 38) as u32;
+        } else {
+            if byte_offset>=64*0x1_0000_0000 {
+                // Set an overflow state.
+                self.input[12] = 0;
+                self.offset = 64;
+                return Err(Error::EndReached);
+            } else {
+                self.input[12] = (byte_offset >> 6) as u32;
+            }
+        }
+
+        self.offset = (byte_offset & 0x3f) as u8;
+        permute(20, &mut self.input, true, Some(&mut self.output));
+
+        let (incremented_low, overflow) = self.input[12].overflowing_add(1);
+        self.input[12] = incremented_low;
+        self.input[13] = self.input[13].wrapping_add(if overflow {
+            if self.large_block_counter { 1 } else { 0 }
+        } else { 0 });
 
         Ok( () )
     }
@@ -374,4 +404,62 @@ fn rfc_7539_case_2_chunked() {
         0x5a, 0xf9, 0x0b, 0xbf, 0x74, 0xa3, 0x5b, 0xe6, 0xb4, 0x0b, 0x8e, 0xed, 0xf2, 0x78, 0x5e, 0x42,
         0x87, 0x4d,
     ].to_vec());
+}
+
+#[test]
+fn seek_off_end() {
+    let mut st = ChaChaState::new(&[0xff; 32], &[0; 12]);
+
+    assert_eq!(st.seek_to(0x40_0000_0000), Err(Error::EndReached));
+    assert_eq!(st.xor_read(&mut [0u8; 1]), Err(Error::EndReached));
+
+    assert_eq!(st.seek_to(1), Ok(()));
+    assert!(st.xor_read(&mut [0u8; 1]).is_ok());
+}
+
+#[test]
+fn read_last_bytes() {
+    let mut st = ChaChaState::new(&[0xff; 32], &[0; 12]);
+
+    st.seek_to(0x40_0000_0000 - 10).expect("should be able to seek to near the end");
+    st.xor_read(&mut [0u8; 10]).expect("should be able to read last 10 bytes");
+    assert!(st.xor_read(&mut [0u8; 1]).is_err());
+    assert!(st.xor_read(&mut [0u8; 10]).is_err());
+
+    st.seek_to(0x40_0000_0000 - 10).unwrap();
+    assert!(st.xor_read(&mut [0u8; 11]).is_err());
+}
+
+#[test]
+fn seek_consistency() {
+    let mut st = ChaChaState::new(&[0x50; 32], &[0x44; 12]);
+
+    let mut continuous = [0u8; 1000];
+    st.xor_read(&mut continuous).unwrap();
+
+    let mut chunks = [0u8; 1000];
+
+    st.seek_to(128).unwrap();
+    st.xor_read(&mut chunks[128..300]).unwrap();
+
+    st.seek_to(0).unwrap();
+    st.xor_read(&mut chunks[0..10]).unwrap();
+
+    st.seek_to(300).unwrap();
+    st.xor_read(&mut chunks[300..533]).unwrap();
+
+    st.seek_to(533).unwrap();
+    st.xor_read(&mut chunks[533..]).unwrap();
+
+    st.seek_to(10).unwrap();
+    st.xor_read(&mut chunks[10..128]).unwrap();
+
+    assert_eq!(continuous.to_vec(), chunks.to_vec());
+
+    // Make sure we don't affect a nonce word when we hit the end with the small block counter
+    assert!(st.seek_to(0x40_0000_0000).is_err());
+    let mut small = [0u8; 100];
+    st.seek_to(0).unwrap();
+    st.xor_read(&mut small).unwrap();
+    assert_eq!(small.to_vec(), continuous[..100].to_vec());
 }
