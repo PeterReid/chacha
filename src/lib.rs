@@ -1,7 +1,11 @@
 #![cfg_attr(feature="nightly", feature(repr_simd))]
+#![cfg_attr(feature="nightly", feature(test))]
 
 extern crate byteorder;
 extern crate keystream;
+
+#[cfg(all(test, feature="bench"))]
+extern crate test;
 
 use byteorder::{ByteOrder, LittleEndian};
 pub use keystream::{KeyStream, SeekableKeyStream};
@@ -265,15 +269,20 @@ impl KeyStream for ChaCha {
             dest
         };
 
-
         for dest_chunk in dest.chunks_mut(64) {
-            permute(self.rounds, &mut self.input, true, Some(&mut self.output));
+            let mut output_buf = self.input;
+            permute(self.rounds, &mut output_buf, true, None);
             try!(self.increment_counter());
             if dest_chunk.len() == 64 {
-                for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
-                    *dest_byte = *dest_byte ^ output_byte;
+                for idx in 0..16 {
+                    let word = LittleEndian::read_u32(&dest_chunk[idx*4..idx*4+4]) ^ output_buf[idx];
+
+                    LittleEndian::write_u32(&mut dest_chunk[idx*4..idx*4+4], word);
                 }
             } else {
+                for idx in 0..16 {
+                    LittleEndian::write_u32(&mut self.output[idx*4..idx*4+4], output_buf[idx]);
+                }
                 for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
                     *dest_byte = *dest_byte ^ output_byte;
                 }
@@ -503,4 +512,21 @@ fn seek_consistency() {
     st.seek_to(0).unwrap();
     st.xor_read(&mut small).unwrap();
     assert_eq!(small.to_vec(), continuous[..100].to_vec());
+}
+
+
+#[cfg(all(test, feature="bench"))]
+mod bench {
+    use super::{ChaCha, KeyStream};
+    use test::Bencher;
+
+    #[bench]
+    pub fn chacha20(bh: &mut Bencher) {
+        let mut stream = ChaCha::new_chacha20(&[0; 32], &[0; 8]);
+        let mut buf = [0u8; 1024];
+        bh.bytes = buf.len() as u64;
+        bh.iter(|| {
+            let _ = stream.xor_read(&mut buf);
+        });
+    }
 }
