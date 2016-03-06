@@ -1,3 +1,37 @@
+//! ChaCha is a family of 256-bit stream ciphers. This create includes five
+//! members of the family:
+//!
+//!
+//! |              | nonce length | stream length  | key length | rounds
+//! |--------------|--------------|----------------|------------|----------
+//! | ChaCha20     | 8            | 2<sup>70</sup> | 32         | 20
+//! | IETF         | 16           | 2<sup>38</sup> | 32         | 20
+//! | XChaCha20    | 24           | 2<sup>70</sup> | 32         | 20
+//! | ChaCha12     | 8            | 2<sup>70</sup> | 32         | 12
+//! | ChaCha8      | 8            | 2<sup>70</sup> | 32         | 8
+//! _(Lengths are given in bytes.)_
+//!
+//! ChaCha12 and ChaCha8 trade off the security margin in favor of performance.
+//! The IETF implementation increases the nonce length, making randomly generating
+//! the same nonce twice less likely, at the cost of making the stream shorter.
+//! XChaCha20 increases the nonce length even further while maintaining the stream
+//! length at the cost of a slightly more expensive initialization step.
+//!
+//! ChaCha benefits greatly from SIMD instructions, which currently requires Rust's
+//! nightly build. Compile with the feature `nightly` enabled for maximum performance.
+//!
+//! ChaCha was designed by Daniel J. Bernstein in 2008 as a slightly modified version
+//! of his Salsa family of ciphers. Salsa20 has been
+//! [analyzed](http://www.ecrypt.eu.org/stream/salsa20pf.html) as part of
+//! the [eSTREAM project](https://en.wikipedia.org/wiki/ESTREAM) and has not had
+//! any practical attack found. That cryptanalysis would generally apply to ChaCha20 as well.
+//! The ChaCha round function is used in the BLAKE hash function, which was
+//! analyzed as part of the
+//! [SHA-3 competition](https://en.wikipedia.org/wiki/NIST_hash_function_competition),
+//! again without finding a practical attack. The IETF's
+//! [RFC 7539](https://tools.ietf.org/html/rfc7539) standardizes a member
+//! of the ChaCha family.
+
 #![cfg_attr(feature="nightly", feature(repr_simd))]
 #![cfg_attr(feature="nightly", feature(test))]
 
@@ -12,6 +46,33 @@ pub use keystream::{KeyStream, SeekableKeyStream};
 pub use keystream::Error;
 use std::cmp::min;
 
+/// A ChaCha keystream.
+///
+/// After being initialized with a `key` and `nonce`, a `ChaCha` instance
+/// will generate a long stream of bytes that is indistinguishable from
+/// random for anyone not knowing the key and nonce.
+///
+/// # Examples
+///
+/// ```
+/// use chacha::{ChaCha, KeyStream};
+///
+/// let secret_key = [
+///     0x29, 0xfa, 0x35, 0x60, 0x88, 0x45, 0xc6, 0xf9, 
+///     0xd8, 0xfe, 0x65, 0xe3, 0x22, 0x0e, 0x5b, 0x05, 
+///     0x03, 0x4a, 0xa0, 0x9f, 0x9e, 0x27, 0xad, 0x0f, 
+///     0x6c, 0x90, 0xa5, 0x73, 0xa8, 0x10, 0xe4, 0x94, 
+/// ];
+/// let nonce = [0u8; 8];
+/// let mut stream = ChaCha::new_chacha20(&secret_key, &nonce);
+///
+/// let mut buffer = [0u8; 6];
+/// buffer = *b"abcdef";
+/// stream.xor_read(&mut buffer[..]).expect("hit end of stream far too soon");
+/// let expected_ciphertext = [0xde, 0x87, 0xa5, 0xbe, 0x1d, 0x77];
+/// assert_eq!(buffer, expected_ciphertext);
+/// ```
+///
 pub struct ChaCha {
     input: [u32; 16],
     output: [u8; 64],
