@@ -7,7 +7,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! ChaCha is a family of 256-bit stream ciphers. This create includes five
+//! ChaCha is a family of 256-bit stream ciphers. This crate includes five
 //! members of the family:
 //!
 //!
