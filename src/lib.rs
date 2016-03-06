@@ -41,6 +41,7 @@
 //! [RFC 7539](https://tools.ietf.org/html/rfc7539) standardizes a member
 //! of the ChaCha family.
 
+#![no_std]
 #![cfg_attr(feature="nightly", feature(repr_simd))]
 #![cfg_attr(feature="nightly", feature(test))]
 
@@ -53,7 +54,7 @@ extern crate test;
 use byteorder::{ByteOrder, LittleEndian};
 pub use keystream::{KeyStream, SeekableKeyStream};
 pub use keystream::Error;
-use std::cmp::min;
+use core::cmp::min;
 
 /// A ChaCha keystream.
 ///
