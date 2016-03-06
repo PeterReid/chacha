@@ -91,7 +91,7 @@ impl ChaCha {
             LittleEndian::read_u32(&nonce[ 8..12]),
             LittleEndian::read_u32(&nonce[12..16]),
         ];
-        permute(20, &mut st, false, None);
+        permute_general(20, &mut st, false, None);
 
         ChaCha {
             input: [
@@ -150,7 +150,7 @@ impl Row {
 // Inlining this causes the loop to unroll, which makes the disassembly hard
 // to read.
 #[inline(always)]
-fn permute(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<&mut [u8; 64]>) {
+fn permute_general(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<&mut [u8; 64]>) {
     let mut a = Row(xs[ 0], xs[ 1], xs[ 2], xs[ 3]);
     let mut b = Row(xs[ 4], xs[ 5], xs[ 6], xs[ 7]);
     let mut c = Row(xs[ 8], xs[ 9], xs[10], xs[11]);
@@ -218,13 +218,13 @@ fn permute(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<&mut [u8
 }
 
 #[inline(never)]
-pub fn permute_only(rounds: u8, xs: &mut [u32; 16]) {
-    permute(rounds, xs, false, None)
+pub fn permute(rounds: u8, xs: &mut [u32; 16]) {
+    permute_general(rounds, xs, false, None)
 }
 
 #[inline(never)]
 pub fn permute_and_add(rounds: u8, xs: &mut [u32; 16]) {
-    permute(rounds, xs, true, None)
+    permute_general(rounds, xs, true, None)
 }
 
 
@@ -271,7 +271,7 @@ impl KeyStream for ChaCha {
 
         for dest_chunk in dest.chunks_mut(64) {
             let mut output_buf = self.input;
-            permute(self.rounds, &mut output_buf, true, None);
+            permute_general(self.rounds, &mut output_buf, true, None);
             try!(self.increment_counter());
             if dest_chunk.len() == 64 {
                 for idx in 0..16 {
@@ -312,7 +312,7 @@ impl SeekableKeyStream for ChaCha {
         }
 
         self.offset = (byte_offset & 0x3f) as u8;
-        permute(self.rounds, &mut self.input, true, Some(&mut self.output));
+        permute_general(self.rounds, &mut self.input, true, Some(&mut self.output));
 
         let (incremented_low, overflow) = self.input[12].overflowing_add(1);
         self.input[12] = incremented_low;
@@ -333,7 +333,7 @@ fn rfc_7539_permute_20() {
         0x00000001, 0x09000000, 0x4a000000, 0x00000000,
     ];
 
-    permute_only(20, &mut xs);
+    permute(20, &mut xs);
 
     assert_eq!(xs, [
         0x837778ab, 0xe238d763, 0xa67ae21e, 0x5950bb2f,
