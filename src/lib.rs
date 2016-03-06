@@ -76,8 +76,7 @@ use core::cmp::min;
 /// let nonce = [0u8; 8];
 /// let mut stream = ChaCha::new_chacha20(&secret_key, &nonce);
 ///
-/// let mut buffer = [0u8; 6];
-/// buffer = *b"abcdef";
+/// let mut buffer = *b"abcdef";
 /// stream.xor_read(&mut buffer[..]).expect("hit end of stream far too soon");
 /// let expected_ciphertext = [0xde, 0x87, 0xa5, 0xbe, 0x1d, 0x77];
 /// assert_eq!(buffer, expected_ciphertext);
