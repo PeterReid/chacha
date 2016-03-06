@@ -21,6 +21,10 @@ pub struct ChaCha {
 }
 
 impl ChaCha {
+    /// Create a ChaCha stream conforming to the IETF's 
+    /// [RFC 7539](https://tools.ietf.org/html/rfc7539).
+    /// The stream takes a 12-byte nonce and has a length of 
+    /// 2<sup>38</sup> bytes, or 256 GiB.
     pub fn new_ietf(key: &[u8; 32], nonce: &[u8; 12]) -> ChaCha {
         ChaCha {
             input: [
@@ -45,6 +49,10 @@ impl ChaCha {
         }
     }
 
+    /// Create a ChaCha stream with an 8-byte nonce and has a length of 
+    /// 2<sup>70</sup> bytes. This is compatible with libsodium's ChaCha20
+    /// implementation and Daniel Bernstein's original 
+    /// [specification](https://cr.yp.to/chacha/chacha-20080128.pdf).
     pub fn new_chacha20(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
         ChaCha {
             input: [
@@ -69,12 +77,21 @@ impl ChaCha {
         }
     }
 
+    /// Create a ChaCha stream with an 8-byte nonce and has a length of 
+    /// 2<sup>70</sup> bytes. This is compatible with libsodium's ChaCha12
+    /// implementation. ChaCha12 decreases security margin relative to
+    /// ChaCha20 in favor of speed.
     pub fn new_chacha12(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha {
         let mut st = ChaCha::new_chacha20(key, nonce);
         st.rounds = 12;
         st
     }
 
+    /// Create a ChaCha stream with a 24-byte nonce and a length of 
+    /// 2<sup>70</sup> bytes. This stream's initialization relates
+    /// to ChaCha20 in the same way that that 
+    /// [XSalsa20](https://cr.yp.to/snuffle/xsalsa-20110204.pdf)
+    /// relates to Salsa20.
     pub fn new_xchacha20(key: &[u8; 32], nonce: &[u8; 24]) -> ChaCha {
         let mut st = [
             0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
