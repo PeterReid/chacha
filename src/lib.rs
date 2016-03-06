@@ -234,12 +234,13 @@ fn permute_general(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<
     }
 }
 
-#[inline(never)]
+/// Apply the ChaCha core function. Note that this is reversible.
 pub fn permute(rounds: u8, xs: &mut [u32; 16]) {
     permute_general(rounds, xs, false, None)
 }
 
-#[inline(never)]
+/// Apply the ChaCha core function and add the result to the input.
+/// This is what maps ChaCha streams' input blocks to output blocks.
 pub fn permute_and_add(rounds: u8, xs: &mut [u32; 16]) {
     permute_general(rounds, xs, true, None)
 }
