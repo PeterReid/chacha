@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error","An error when generating a keystream"]],"trait":[["KeyStream","Types that encapsulate a stream of bytes that to be combined with a cryptographic plaintext or ciphertext"],["SeekableKeyStream","KeyStreams that allow efficiently moving to positions in the stream"]]});
