@@ -1,4 +1,4 @@
-[Documentation](https://http://peterreid.github.io/chacha)
+[Documentation](http://peterreid.github.io/chacha)
 
 # Adding a Dependency
 
