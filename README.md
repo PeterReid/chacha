@@ -1,4 +1,6 @@
-[Documentation](https://http://peterreid.github.io/chacha)
+
+[![documenation](https://docs.rs/chacha/badge.svg)](https://docs.rs/chacha/)
+[![crates.io link](https://img.shields.io/crates/v/chacha.svg)](https://crates.io/crates/chacha)
 
 # Adding a Dependency
 
