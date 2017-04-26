@@ -443,10 +443,10 @@ pub fn selftest() {
                     0xcb, 0xd0, 0x83, 0xe8, 0xa2, 0x50, 0x3c, 0x4e];
 
     let mut result = [0u8; 64];
-    let mut state = ChaCha20::new(&key, &nonce);
-    state.seek_to(64);
-    state.xor_read(&result);
-    assert_eq!(result, expected);
+    let mut state = ChaCha::new_ietf(&key, &nonce);
+    state.seek_to(64).unwrap();
+    state.xor_read(&mut result).unwrap();
+    assert_eq!(result.to_vec(),expected.to_vec());
 }
 
 
