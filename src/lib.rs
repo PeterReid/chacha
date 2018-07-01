@@ -242,6 +242,19 @@ impl Row {
         let righted = self.shift_right(32 - bit_distance);
         lefted.or(righted)
     }
+    
+    fn shuffle_left_1(self) -> Row {
+        Row(self.1, self.2, self.3, self.0)
+    }
+    
+    fn shuffle_left_2(self) -> Row {
+        Row(self.2, self.3, self.0, self.1)
+    }
+    
+    fn shuffle_left_3(self) -> Row {
+        Row(self.3, self.0, self.1, self.2)
+    }
+    
 }
 
 // Inlining this causes the loop to unroll, which makes the disassembly hard
@@ -267,16 +280,16 @@ fn permute_general(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<
             // We are coming up on an odd round.
             // We will want to act on diagonals instead of columns, so
             // rearrange our rows accordingly.
-            b = Row(b.1, b.2, b.3, b.0);
-            c = Row(c.2, c.3, c.0, c.1);
-            d = Row(d.3, d.0, d.1, d.2);
+            b = b.shuffle_left_1();
+            c = c.shuffle_left_2();
+            d = d.shuffle_left_3();
         } else {
             // We are coming up on an even round.
             // Undo our rearrangement into diagonals so we can act on
             // columns again.
-            b = Row(b.3, b.0, b.1, b.2);
-            c = Row(c.2, c.3, c.0, c.1);
-            d = Row(d.1, d.2, d.3, d.0);
+            b = b.shuffle_left_3();
+            c = c.shuffle_left_2();
+            d = d.shuffle_left_1();
             if rounds==0 {
                 break;
             }
