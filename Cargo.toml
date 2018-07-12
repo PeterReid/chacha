@@ -8,8 +8,8 @@ repository = "https://github.com/PeterReid/chacha"
 documentation = "http://peterreid.github.io/chacha"
 
 [dependencies]
-byteorder = "0.4.*"
-keystream = "1.0"
+byteorder = "1"
+keystream = "1"
 
 [features]
 nightly = []
