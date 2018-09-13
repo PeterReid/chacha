@@ -82,6 +82,7 @@ use core::cmp::min;
 /// assert_eq!(buffer, expected_ciphertext);
 /// ```
 ///
+#[derive(Clone)]
 pub struct ChaCha {
     input: [u32; 16],
     output: [u8; 64],
