@@ -348,9 +348,7 @@ impl ChaCha {
             let (incremented_low, overflow) = self.input[12].overflowing_add(1);
 
             self.input[12] = incremented_low;
-            self.input[13] = self.input[13].wrapping_add(if overflow {
-                if self.large_block_counter { 1 } else { 0 }
-            } else { 0 });
+            self.input[13] = self.input[13].wrapping_add((overflow & self.large_block_counter) as u32);
         } else {
             // The low block counter overflowed OR we are just starting.
             // We detect the "just starting" case by setting `offset` to 255.
