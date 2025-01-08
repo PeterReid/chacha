@@ -45,16 +45,15 @@
 #![cfg_attr(feature="nightly", feature(repr_simd))]
 #![cfg_attr(feature="nightly", feature(test))]
 
-extern crate byteorder;
 extern crate keystream;
 
 #[cfg(all(test, feature="bench"))]
 extern crate test;
 
-use byteorder::{ByteOrder, LittleEndian};
 pub use keystream::{KeyStream, SeekableKeyStream};
 pub use keystream::Error;
 use core::cmp::min;
+use core::convert::TryInto;
 
 /// A ChaCha keystream.
 ///
@@ -100,18 +99,18 @@ impl ChaCha {
         ChaCha {
             input: [
                 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
-                LittleEndian::read_u32(&key[ 0.. 4]),
-                LittleEndian::read_u32(&key[ 4.. 8]),
-                LittleEndian::read_u32(&key[ 8..12]),
-                LittleEndian::read_u32(&key[12..16]),
-                LittleEndian::read_u32(&key[16..20]),
-                LittleEndian::read_u32(&key[20..24]),
-                LittleEndian::read_u32(&key[24..28]),
-                LittleEndian::read_u32(&key[28..32]),
+                u32::from_le_bytes(key[ 0.. 4].try_into().unwrap()),
+                u32::from_le_bytes(key[ 4.. 8].try_into().unwrap()),
+                u32::from_le_bytes(key[ 8..12].try_into().unwrap()),
+                u32::from_le_bytes(key[12..16].try_into().unwrap()),
+                u32::from_le_bytes(key[16..20].try_into().unwrap()),
+                u32::from_le_bytes(key[20..24].try_into().unwrap()),
+                u32::from_le_bytes(key[24..28].try_into().unwrap()),
+                u32::from_le_bytes(key[28..32].try_into().unwrap()),
                 0, // block counter
-                LittleEndian::read_u32(&nonce[ 0.. 4]),
-                LittleEndian::read_u32(&nonce[ 4.. 8]),
-                LittleEndian::read_u32(&nonce[ 8..12]),
+                u32::from_le_bytes(nonce[ 0.. 4].try_into().unwrap()),
+                u32::from_le_bytes(nonce[ 4.. 8].try_into().unwrap()),
+                u32::from_le_bytes(nonce[ 8..12].try_into().unwrap()),
             ],
             output: [0; 64],
             offset: 255,
@@ -128,18 +127,18 @@ impl ChaCha {
         ChaCha {
             input: [
                 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
-                LittleEndian::read_u32(&key[ 0.. 4]),
-                LittleEndian::read_u32(&key[ 4.. 8]),
-                LittleEndian::read_u32(&key[ 8..12]),
-                LittleEndian::read_u32(&key[12..16]),
-                LittleEndian::read_u32(&key[16..20]),
-                LittleEndian::read_u32(&key[20..24]),
-                LittleEndian::read_u32(&key[24..28]),
-                LittleEndian::read_u32(&key[28..32]),
+                u32::from_le_bytes(key[ 0.. 4].try_into().unwrap()),
+                u32::from_le_bytes(key[ 4.. 8].try_into().unwrap()),
+                u32::from_le_bytes(key[ 8..12].try_into().unwrap()),
+                u32::from_le_bytes(key[12..16].try_into().unwrap()),
+                u32::from_le_bytes(key[16..20].try_into().unwrap()),
+                u32::from_le_bytes(key[20..24].try_into().unwrap()),
+                u32::from_le_bytes(key[24..28].try_into().unwrap()),
+                u32::from_le_bytes(key[28..32].try_into().unwrap()),
                 0, // block counter
                 0,
-                LittleEndian::read_u32(&nonce[ 0.. 4]),
-                LittleEndian::read_u32(&nonce[ 4.. 8]),
+                u32::from_le_bytes(nonce[ 0.. 4].try_into().unwrap()),
+                u32::from_le_bytes(nonce[ 4.. 8].try_into().unwrap()),
             ],
             output: [0; 64],
             offset: 255,
@@ -176,18 +175,18 @@ impl ChaCha {
     pub fn new_xchacha20(key: &[u8; 32], nonce: &[u8; 24]) -> ChaCha {
         let mut st = [
             0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
-            LittleEndian::read_u32(&key[ 0.. 4]),
-            LittleEndian::read_u32(&key[ 4.. 8]),
-            LittleEndian::read_u32(&key[ 8..12]),
-            LittleEndian::read_u32(&key[12..16]),
-            LittleEndian::read_u32(&key[16..20]),
-            LittleEndian::read_u32(&key[20..24]),
-            LittleEndian::read_u32(&key[24..28]),
-            LittleEndian::read_u32(&key[28..32]),
-            LittleEndian::read_u32(&nonce[ 0.. 4]),
-            LittleEndian::read_u32(&nonce[ 4.. 8]),
-            LittleEndian::read_u32(&nonce[ 8..12]),
-            LittleEndian::read_u32(&nonce[12..16]),
+            u32::from_le_bytes(key[ 0.. 4].try_into().unwrap()),
+            u32::from_le_bytes(key[ 4.. 8].try_into().unwrap()),
+            u32::from_le_bytes(key[ 8..12].try_into().unwrap()),
+            u32::from_le_bytes(key[12..16].try_into().unwrap()),
+            u32::from_le_bytes(key[16..20].try_into().unwrap()),
+            u32::from_le_bytes(key[20..24].try_into().unwrap()),
+            u32::from_le_bytes(key[24..28].try_into().unwrap()),
+            u32::from_le_bytes(key[28..32].try_into().unwrap()),
+            u32::from_le_bytes(nonce[ 0.. 4].try_into().unwrap()),
+            u32::from_le_bytes(nonce[ 4.. 8].try_into().unwrap()),
+            u32::from_le_bytes(nonce[ 8..12].try_into().unwrap()),
+            u32::from_le_bytes(nonce[12..16].try_into().unwrap()),
         ];
         permute_general(20, &mut st, false, None);
 
@@ -197,8 +196,8 @@ impl ChaCha {
                 st[ 0], st[ 1], st[ 2], st[ 3],
                 st[12], st[13], st[14], st[15],
                 0, 0,
-                LittleEndian::read_u32(&nonce[16..20]),
-                LittleEndian::read_u32(&nonce[20..24]),
+                u32::from_le_bytes(nonce[16..20].try_into().unwrap()),
+                u32::from_le_bytes(nonce[20..24].try_into().unwrap()),
             ],
             output: [0; 64],
             offset: 255,
@@ -304,22 +303,22 @@ fn permute_general(mut rounds: u8, xs: &mut [u32; 16], do_add: bool, bs: Option<
     }
 
     if let Some(bs) = bs {
-        LittleEndian::write_u32(&mut bs[ 0.. 4], a.0);
-        LittleEndian::write_u32(&mut bs[ 4.. 8], a.1);
-        LittleEndian::write_u32(&mut bs[ 8..12], a.2);
-        LittleEndian::write_u32(&mut bs[12..16], a.3);
-        LittleEndian::write_u32(&mut bs[16..20], b.0);
-        LittleEndian::write_u32(&mut bs[20..24], b.1);
-        LittleEndian::write_u32(&mut bs[24..28], b.2);
-        LittleEndian::write_u32(&mut bs[28..32], b.3);
-        LittleEndian::write_u32(&mut bs[32..36], c.0);
-        LittleEndian::write_u32(&mut bs[36..40], c.1);
-        LittleEndian::write_u32(&mut bs[40..44], c.2);
-        LittleEndian::write_u32(&mut bs[44..48], c.3);
-        LittleEndian::write_u32(&mut bs[48..52], d.0);
-        LittleEndian::write_u32(&mut bs[52..56], d.1);
-        LittleEndian::write_u32(&mut bs[56..60], d.2);
-        LittleEndian::write_u32(&mut bs[60..64], d.3);
+        bs[ 0.. 4].copy_from_slice(&a.0.to_le_bytes());
+        bs[ 4.. 8].copy_from_slice(&a.1.to_le_bytes());
+        bs[ 8..12].copy_from_slice(&a.2.to_le_bytes());
+        bs[12..16].copy_from_slice(&a.3.to_le_bytes());
+        bs[16..20].copy_from_slice(&b.0.to_le_bytes());
+        bs[20..24].copy_from_slice(&b.1.to_le_bytes());
+        bs[24..28].copy_from_slice(&b.2.to_le_bytes());
+        bs[28..32].copy_from_slice(&b.3.to_le_bytes());
+        bs[32..36].copy_from_slice(&c.0.to_le_bytes());
+        bs[36..40].copy_from_slice(&c.1.to_le_bytes());
+        bs[40..44].copy_from_slice(&c.2.to_le_bytes());
+        bs[44..48].copy_from_slice(&c.3.to_le_bytes());
+        bs[48..52].copy_from_slice(&d.0.to_le_bytes());
+        bs[52..56].copy_from_slice(&d.1.to_le_bytes());
+        bs[56..60].copy_from_slice(&d.2.to_le_bytes());
+        bs[60..64].copy_from_slice(&d.3.to_le_bytes());
     } else {
         xs[ 0] = a.0; xs[ 1] = a.1; xs[ 2] = a.2; xs[ 3] = a.3;
         xs[ 4] = b.0; xs[ 5] = b.1; xs[ 6] = b.2; xs[ 7] = b.3;
@@ -384,16 +383,15 @@ impl KeyStream for ChaCha {
         for dest_chunk in dest.chunks_mut(64) {
             let mut output_buf = self.input;
             permute_general(self.rounds, &mut output_buf, true, None);
-            try!(self.increment_counter());
+            self.increment_counter()?;
             if dest_chunk.len() == 64 {
                 for idx in 0..16 {
-                    let word = LittleEndian::read_u32(&dest_chunk[idx*4..idx*4+4]) ^ output_buf[idx];
-
-                    LittleEndian::write_u32(&mut dest_chunk[idx*4..idx*4+4], word);
+                    let word = u32::from_le_bytes(dest_chunk[idx*4..idx*4+4].try_into().unwrap()) ^ output_buf[idx];
+                    dest_chunk[idx*4..idx*4+4].copy_from_slice(&word.to_le_bytes());
                 }
             } else {
                 for idx in 0..16 {
-                    LittleEndian::write_u32(&mut self.output[idx*4..idx*4+4], output_buf[idx]);
+                    self.output[idx*4..idx*4+4].copy_from_slice(&output_buf[idx].to_le_bytes());
                 }
                 for (dest_byte, output_byte) in dest_chunk.iter_mut().zip(self.output.iter()) {
                     *dest_byte = *dest_byte ^ output_byte;
@@ -460,7 +458,7 @@ pub fn selftest() {
     let mut state = ChaCha::new_ietf(&key, &nonce);
     state.seek_to(64).unwrap();
     state.xor_read(&mut result).unwrap();
-    assert_eq!(result.to_vec(),expected.to_vec());
+    assert_eq!(result, expected);
 }
 
 
